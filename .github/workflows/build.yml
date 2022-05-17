@@ -1,55 +1,39 @@
-name: Build
+# Automatically build the project and run any configured tests for every push
+# and submitted pull request. This can help catch issues that only occur on
+# certain platforms or Java versions, and provides a first line of defence
+# against bad commits.
 
-on:
-  push:
-    branches:
-      - main
+name: build
+on: [pull_request, push]
 
 jobs:
-  Build:
-    runs-on: ubuntu-20.04
-
+  build:
+    strategy:
+      matrix:
+        # Use these Java versions
+        java: [
+          16,
+        ]
+        # and run on both Linux and Windows
+        os: [ubuntu-20.04, windows-2022]
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
+      - name: checkout repository
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-
-      - name: Validate Gradle wrapper
+      - name: validate gradle wrapper
         uses: gradle/wrapper-validation-action@v1
-
-      - name: Setup JDK 16
-        uses: actions/setup-java@v2
+      - name: setup jdk ${{ matrix.java }}
+        uses: actions/setup-java@v1
         with:
-          java-version: 16
-          distribution: temurin
-
-      - name: Build
-        id: build
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: checkLicenses build test runGametest publish
-          gradle-version: wrapper
-        env:
-          SNAPSHOT: true
-          ORG_GRADLE_PROJECT_mavenUsername: ${{ secrets.MAVEN_USER }}
-          ORG_GRADLE_PROJECT_mavenPassword: ${{ secrets.MAVEN_PASS }}
-
-      - name: Copy GameTest Results
-        run: cp run/TEST-gametest.xml build/test-results/test/
-
-      - name: Notify Discord
-        uses: TeamGalacticraft/discord-reporter@main
-        with:
-          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          outcome: ${{ steps.build.outcome }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Capture build artifacts
+          java-version: ${{ matrix.java }}
+      - name: make gradle wrapper executable
+        if: ${{ runner.os != 'Windows' }}
+        run: chmod +x ./gradlew
+      - name: build
+        run: ./gradlew build
+      - name: capture build artifacts
+        if: ${{ runner.os == 'Linux' && matrix.java == '16' }} # Only upload artifacts built from latest java on one OS
         uses: actions/upload-artifact@v2
         with:
-          name: Galacticraft
-          path: |
-            build/libs/
-            !build/libs/*-sources.jar
-            !build/libs/*-dev.jar
+          name: Artifacts
+          path: build/libs/
